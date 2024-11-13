@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href='https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css' rel='stylesheet'>
+    <title>cPanel - Gestion des fichiers</title>
+    <style>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: Arial, sans-serif;
+}
+
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #333;
+  padding: 10px 20px;
+}
+
+.navbar .logo a {
+  color: white;
+  text-decoration: none;
+  font-size: 24px;
+  font-weight: bold;
+}
+
+.nav-links {
+  list-style: none;
+  display: flex;
+}
+
+.nav-links li {
+  margin: 0 15px;
+}
+
+.nav-links a {
+  color: white;
+  text-decoration: none;
+  font-size: 18px;
+}
+
+.nav-links a:hover {
+  color: #f1f1f1;
+}
+
+.menu-icon {
+  display: none;
+  font-size: 30px;
+  color: white;
+  cursor: pointer;
+}
+
+/* Responsive styles */
+@media screen and (max-width: 768px) {
+  .nav-links {
+    display: none;
+    width: 100%;
+    flex-direction: column;
+    align-items: center;
+    position: absolute;
+    top: 60px;
+    left: 0;
+    background-color: #333;
+    padding: 10px 0;
+  }
+
+  .nav-links.active {
+    display: flex;
+  }
+
+  .nav-links li {
+    margin: 10px 0;
+  }
+
+  .menu-icon {
+    display: block;
+  }
+}
+
+.file-label {
+  display: inline-block;
+  width: 250px;
+  height: 250px;
+  background-color: #3498db;
+  border-radius: 50%;
+  color: white;
+  text-align: center;
+  line-height: 60px;
+  font-size: 30px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  padding-top: 50px;
+  
+}
+
+.file-label:hover {
+  background-color: #2980b9;
+}
+
+/* Cacher l'élément input type="file" */
+.file-input {
+  display: none; /* Masque l'input file réel */
+  position: relative;
+  
+}
+
+.items-center {
+padding-top: 100px;
+  text-align: center;
+}
+.input-pad {
+  padding-top: 60px;
+  margin-bottom: 25px;
+}
+
+.title{
+  padding-top: 20px;
+  color: #333;
+  font-size: 50px;
+}
+
+.buttom{
+  background-color: #333;
+  color: #fff;
+  border-radius: 15px;
+  padding: 10px 30px;
+  font-size: 17px;
+  font-weight: bold
+}
+
+.buttom:hover{
+  background-color: #fff;
+  color: #333;
+
+}
+
+.nav-icon{
+  font-size: 30px; 
+  color: white;
+}
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="logo">
+          <i class='fab fa-github nav-icon'></i>
+          <a>LucasC78</a>
+        </div>
+        <ul class="nav-links">
+          <li><a href="http://127.0.0.1:8080/">Home</a></li>
+          <li><a href="http://127.0.0.1:8080/allfiles">All Files</a></li>
+          <li><a href="https://github.com/LucasC78">Contact</a></li>
+        </ul>
+        <div class="menu-icon" id="menu-icon">
+          &#9776;
+        </div>
+      </nav>
+      <script>
+        const menuIcon = document.getElementById('menu-icon');
+          const navLinks = document.querySelector('.nav-links');
+          
+          menuIcon.addEventListener('click', () => {
+            navLinks.classList.toggle('active');
+          });  
+      </script>
+
+    
+    <!-- Formulaire combiné pour créer un dossier et télécharger des fichiers -->
+    <div class="items-center">
+      <h1 class="title">Managing files on the server</h1>
+        <form id="folderAndFileForm" enctype="multipart/form-data">
+            <div class="input-pad">
+            <label for="folder_name">Project name:</label>
+            <input type="text" id="folder_name" name="folder_name" placeholder="name" required>
+            <br><br>
+            <label class="file-label" for="file">Select files to upload:</label>
+            <input class="file-input" type="file" id="file" name="file" multiple required>
+            </div>
+
+            <button type="submit" class="buttom" >Create the folder and upload the files</button>
+        </form>
+        <p id="message"></p>
+    </div>
+    
+    <script>
+
+        document.getElementById('file').addEventListener('change', function() {
+            const fileList = this.files;
+            let message = "Selected files :<br>";
+            for (let i = 0; i < fileList.length; i++) {
+                message += fileList[i].name + "<br>";
+            }
+            document.getElementById('message').innerHTML = message;
+        });
+
+        document.getElementById('folderAndFileForm').addEventListener('submit', async (event) => {
+            event.preventDefault();
+            
+            const folderName = document.getElementById('folder_name').value;
+            const fileInput = document.getElementById('file');
+            const formData = new FormData();
+            formData.append('folder_name', folderName);
+
+            for (let file of fileInput.files) {
+                formData.append('file', file);
+            }
+
+            const response = await fetch('/create_and_upload', {
+                method: 'POST',
+                body: formData
+            });
+
+            const message = await response.text();
+            document.getElementById('message').textContent = message;
+        });
+    </script>
+
+</body>
+</html>
+
