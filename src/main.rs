@@ -6,7 +6,7 @@ use std::io::Write;
 use std::fs::{File, create_dir_all};
 use serde::Deserialize;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Path};
 
 #[derive(Deserialize)]
 struct FolderForm {
@@ -14,10 +14,8 @@ struct FolderForm {
 }
 
 async fn create_and_upload(mut payload: Multipart) -> Result<HttpResponse, Error> {
-
     let mut folder_name = String::new();
-    let mut file_data: Option<(String, Vec<u8>)> = None;
-
+    let mut files = Vec::new();
 
     while let Some(item) = payload.next().await {
         let mut field = item?;
@@ -35,35 +33,30 @@ async fn create_and_upload(mut payload: Multipart) -> Result<HttpResponse, Error
             while let Some(chunk) = field.next().await {
                 file_content.extend_from_slice(&chunk?);
             }
-            let filename = field.content_disposition().get_filename().unwrap_or("file");
-            file_data = Some((filename.to_string(), file_content));
+            let filename = field.content_disposition().get_filename().unwrap_or("file").to_string();
+            files.push((filename, file_content));
         }
     }
 
     let folder_path = format!("./public/{}", folder_name);
-    match create_dir_all(&folder_path) {
-        Ok(_) => (),
-        Err(e) => return Ok(HttpResponse::InternalServerError().body(format!("Error creating folder: {}", e))),
+    if let Err(e) = create_dir_all(&folder_path) {
+        return Ok(HttpResponse::InternalServerError().body(format!("Error creating folder: {}", e)));
     }
 
-    if let Some((filename, data)) = file_data {
+    for (filename, data) in files {
         let filepath = format!("{}/{}", folder_path, filename);
-        
-        let mut f = match File::create(&filepath) {
+        let mut file = match File::create(&filepath) {
             Ok(file) => file,
-            Err(e) => return Ok(HttpResponse::InternalServerError().body(format!("Error creating file: {}", e))),
+            Err(e) => return Ok(HttpResponse::InternalServerError().body(format!("Error creating file {}: {}", filename, e))),
         };
 
-        if let Err(e) = f.write_all(&data) {
-            return Ok(HttpResponse::InternalServerError().body(format!("Error writing file: {}", e)));
+        if let Err(e) = file.write_all(&data) {
+            return Ok(HttpResponse::InternalServerError().body(format!("Error writing file {}: {}", filename, e)));
         }
-
-        return Ok(HttpResponse::Ok().body("Folder created and file uploaded successfully!"));
     }
 
-    Ok(HttpResponse::BadRequest().body("No files downloaded"))
+    Ok(HttpResponse::Ok().body("Folder created and files uploaded successfully!"))
 }
-
 async fn list_directory(path: web::Path<String>) -> HttpResponse {
 
     let dir_path = format!("./public/{}", path);
@@ -79,9 +72,9 @@ async fn list_directory(path: web::Path<String>) -> HttpResponse {
                     .map(|entry| {
                         let file_name = entry.file_name().into_string().ok().unwrap_or_default();
                         if entry.metadata().map(|m| m.is_dir()).unwrap_or(false) {
-                            format!("<li><a href='/public/{}/'>{}/</a><button class='fas fa-trash-alt'></button></li>", file_name, file_name)
+                            format!("<li><a href='/public/{}/'>{}/</a></li>", file_name, file_name)
                         } else {
-                            format!("<li><a href='/public/{}/{}'>{}</a><button class='fas fa-trash-alt'></button></li>", path.display().to_string().replace("./public", ""), file_name, file_name)
+                            format!("<li><a href='/public/{}/{}'>{}</a></li>", path.display().to_string().replace("./public", ""), file_name, file_name)
                         }
                     })
                     .collect::<Vec<String>>()
@@ -96,6 +89,7 @@ async fn list_directory(path: web::Path<String>) -> HttpResponse {
                     <link rel='stylesheet' type='text/css' href='/static/main.css'>
                     <link href='https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css' rel='stylesheet'>
                     <title>Dossier: {}</title>
+
                 </head>
                 <body>
                     <nav class='navbar'>
@@ -118,13 +112,25 @@ async fn list_directory(path: web::Path<String>) -> HttpResponse {
                         <ul>{}</ul>
                         <a onclick='window.history.back()'>Back</a>
                     </div>
-                    
+
                 </body>
             </html>",
             path.display(),
             path.display(),
             entries
         ))
+    } else {
+        HttpResponse::NotFound().body("Folder not found")
+    }
+}
+
+async fn delete_folder_web(folder: web::Form<FolderForm>) -> HttpResponse {
+    let folder_path = format!("./public/{}", folder.folder_name);
+    if Path::new(&folder_path).exists() {
+        if let Err(e) = fs::remove_dir_all(&folder_path) {
+            return HttpResponse::InternalServerError().body(format!("Error deleting folder: {}", e));
+        }
+        return HttpResponse::Ok().body("<script>window.location.href = '/allfiles';</script>");
     } else {
         HttpResponse::NotFound().body("Folder not found")
     }
@@ -150,18 +156,35 @@ async fn main() -> std::io::Result<()> {
                             .filter_map(|entry| entry.ok())
                             .map(|entry| {
                                 let file_name = entry.file_name().into_string().ok().unwrap_or_default();
-                                if entry.metadata().map(|m| m.is_dir()).unwrap_or(false) {
+                    if entry.metadata().map(|m| m.is_dir()).unwrap_or(false) {
+                        format!(
+                            "<li>
+                                <a href='/public/{}/'>{}</a>
+                                <form action='/delete_folder' method='post' style='display:inline;'>
+                                    <input type='hidden' name='folder_name' value='{}'>
+                                    <button type='submit' class='fas fa-trash-alt'></button>
+                                </form>
+                            </li>",
+                            file_name, file_name, file_name
+                        )
+                    } else {
+                        format!(
+                            "<li>
+                                <a href='/public/{}/{}'>{}</a>
+                                <form action='/delete_folder' method='post' style='display:inline;'>
+                                    <input type='hidden' name='folder_name' value='{}'>
+                                    <button type='submit' class='fas fa-trash-alt'></button>
+                                </form>
+                            </li>",
+                            file_name, file_name, file_name, file_name
+                        )
+                    }
+                })
+                .collect::<Vec<String>>()
+                .join("\n")
+        })
+        .unwrap_or_else(|_| String::from("<li>Erreur lors de la lecture du dossier</li>"));
 
-                                    format!("<li><a href='/public/{}/'>{}/</a><button class='fas fa-trash-alt'></button></li>", file_name, file_name)
-                                } else {
-
-                                    format!("<li><a href='/public/{}'>{}</a><button class='fas fa-trash-alt'></button></li>", file_name, file_name)
-                                }
-                            })
-                            .collect::<Vec<String>>()
-                            .join("\n")
-                    })
-                    .unwrap_or_else(|_| String::from("<li>Erreur lors de la lecture du dossier</li>")); 
 
 
                 HttpResponse::Ok().body(format!(
@@ -202,6 +225,8 @@ async fn main() -> std::io::Result<()> {
 
             .route("/public/{folder_name}/", web::get().to(list_directory))
 
+            .route("/delete_folder", web::post().to(delete_folder_web))
+
             .service(Files::new("/static", "./static"))
 
             .service(Files::new("/public", "./public").show_files_listing())
@@ -211,4 +236,6 @@ async fn main() -> std::io::Result<()> {
     .run()
     .await
 }
+
+
 
